@@ -1,0 +1,234 @@
+- name: Add Lynis key
+  ansible.builtin.apt_key:
+    url: https://packages.cisofy.com/keys/cisofy-software-public.key
+    state: present
+
+- name: Add Lynis repo
+  ansible.builtin.apt_repository:
+    repo: "deb https://packages.cisofy.com/community/lynis/deb/ stable main"
+    state: present
+
+- name: Run the equivalent of "apt-get update"
+  ansible.builtin.apt:
+    update_cache: yes
+  changed_when: false
+
+- name: Update all packages to their latest version
+  ansible.builtin.apt:
+    name: "*"
+    state: latest
+
+- name: Install all required packages
+  ansible.builtin.apt:
+    name:
+      - acct
+      - aide
+      - aide-common
+      - apt-show-versions
+      - apt-transport-https
+      - auditd
+      - debian-goodies
+      - debsecan
+      - debsums
+      - fail2ban
+      - htop
+      - iotop
+      - iptables-persistent
+      - kmod
+      - libpam-modules
+      - libpam-passwdqc
+      - libpam-tmpdir
+      - lynis
+      - mlocate
+      - rkhunter
+      - sysstat
+    state: latest
+
+- name: Remove all unnecessary packages
+  ansible.builtin.apt:
+    name:
+      - libpam-ccreds
+    state: absent
+
+- name: Remove dependencies that are no longer required
+  ansible.builtin.apt:
+    autoremove: yes
+
+- name: Remove unnecessary packages
+  shell: "apt-get purge -y $(dpkg -l | grep '^rc' | awk '{print $2}')"
+  args:
+    warn: false
+  changed_when: false
+
+# Disable and mask these systemd services
+- name: Disable these systemd services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    masked: true
+  with_items:
+    - apport.service
+    - iscsid.service
+    - kexec-load.service
+    - kexec.service
+    - lvm2-lvmpolld.service
+    - lxd-agent.service
+    - multipathd.service
+    - plymouth-start.service
+    - postfix.service
+    - thermald.service
+    - ubuntu-advantage.service
+    - unattended-upgrades.service
+  ignore_errors: true
+
+# Found BIND version in banner [NAME-4210] - https://cisofy.com/lynis/controls/NAME-4210/
+- name: Task name
+  stat:
+    path: /etc/bind
+  register: bind_path
+- name: Copy correct Bind config
+  ansible.builtin.copy:
+    src: named.conf.options
+    dest: /etc/bind/named.conf.options
+    owner: root
+    group: bind
+    mode: '0644'
+  notify: reboot_bind
+  when: bind_path.stat.exists
+  ignore_errors: true
+
+# iptables module(s) loaded, but no rules active [FIRE-4512] - https://cisofy.com/lynis/controls/FIRE-4512/
+- name: Copy correct iptables config
+  ansible.builtin.copy:
+    src: iptables
+    dest: /tmp/iptables
+- name: Load a state from a file
+  community.general.iptables_state:
+    state: restored
+    path: /tmp/iptables
+  async: 5
+  poll: 0
+  notify: netfilter_save
+
+# If not required, consider explicit disabling of core dump in /etc/security/limits.conf file [KRNL-5820] - https://cisofy.com/lynis/controls/KRNL-5820/
+- name: limits
+  include_tasks: limits.yaml
+
+# PAM and passwords settings
+- name: pam
+  include_tasks: pam.yaml
+
+# Determine if protocol dccp/sctp/rds/tipc is really needed on this system [NETW-3200] - https://cisofy.com/lynis/controls/NETW-3200/
+- name: Disable unused filesystems
+  ansible.builtin.copy:
+    src: disablefs.conf
+    dest: /etc/modprobe.d/disablefs.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+# Disable the 'VRFY' command [MAIL-8820:disable_vrfy_command]
+- name: Disable VRFY
+  command: postconf -e disable_vrfy_command=yes
+  ignore_errors: true
+
+- name: Add issue and issue.net files
+  ansible.builtin.copy:
+    src: issue
+    dest: "{{ item }}"
+    backup: true
+    mode: 0644
+    owner: root
+    group: root
+  with_items:
+    - /etc/issue
+    - /etc/issue.net
+
+# Consider hardening SSH configuration [SSH-7408] - https://cisofy.com/lynis/controls/SSH-7408/
+- name: Configure sshd
+  ansible.builtin.copy:
+    src: sshd_config
+    dest: /etc/ssh/sshd_config
+    backup: true
+    mode: 0600
+    owner: root
+    group: root
+    validate: sshd -t -f %s
+
+# Enable process accounting [ACCT-9622] - https://cisofy.com/lynis/controls/ACCT-9622/
+- name: Enable process accounting
+  command: /usr/sbin/accton on
+  changed_when: false
+
+# Enable sysstat to collect accounting (no results) [ACCT-9626] - https://cisofy.com/lynis/controls/ACCT-9626/
+- name: Configure sysstat
+  ansible.builtin.copy:
+    src: sysstat
+    dest: /etc/default/sysstat
+    backup: true
+    mode: 0600
+    owner: root
+    group: root
+
+# Audit daemon is enabled with an empty ruleset. Disable the daemon or define rules [ACCT-9630]  - https://cisofy.com/lynis/controls/ACCT-9630/
+- name: Configure auditd
+  ansible.builtin.copy:
+    src: audit.rules
+    dest: /etc/audit/rules.d/audit.rules
+    backup: true
+    mode: 0640
+    owner: root
+    group: root
+
+- name: Change file permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: '0600'
+  with_items:
+    - /etc/at.deny
+    - /etc/crontab
+
+- name: Change directory permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0700'
+  with_items:
+    - /etc/cron.d
+    - /etc/cron.daily
+    - /etc/cron.hourly
+    - /etc/cron.weekly
+    - /etc/cron.monthly
+
+# Double check the permissions of home directories as some might be not strict enough. [HOME-9304] https://cisofy.com/lynis/controls/HOME-9304/
+- name: Change home directory permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0750'
+  with_items:
+    - /home/ubuntu
+
+# Harden compilers like restricting access to root user only [HRDN-7222] - https://cisofy.com/lynis/controls/HRDN-7222/
+- name: Change compilers permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: '0700'
+  with_items:
+    - /usr/bin/x86_64-linux-gnu-as
+    - /usr/bin/x86_64-linux-gnu-gcc-9
+  ignore_errors: true
+
+- name: Change various sysctl-settings, look at the vars file for documentation
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+    ignoreerrors: true
+  with_dict: "{{ sysctl_config }}"
+
+- name: Finally
+  debug:
+    msg: "Done!"

@@ -1,0 +1,24 @@
+AcceptEnv LANG LC_*
+AddressFamily any
+AllowAgentForwarding no
+AllowTcpForwarding no
+AuthenticationMethods any
+Banner /etc/issue.net
+ChallengeResponseAuthentication no
+ClientAliveCountMax 2
+Compression no
+LogLevel VERBOSE
+MaxAuthTries 3
+MaxSessions 2
+PasswordAuthentication yes
+PermitEmptyPasswords no
+PermitRootLogin no
+PermitUserEnvironment no
+Port 22
+PrintLastLog yes
+PrintMotd no
+Subsystem sftp internal-sftp
+TCPKeepAlive no
+UseDNS no
+UsePAM yes
+X11Forwarding no

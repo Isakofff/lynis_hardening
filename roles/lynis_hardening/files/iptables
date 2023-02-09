@@ -1,0 +1,12 @@
+*filter
+:INPUT ACCEPT [6614:10022073]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [10326:1013750]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+-A INPUT -p tcp -m tcp --dport 82 -j REJECT --reject-with icmp-port-unreachable
+-A INPUT -p tcp -m tcp --dport 83 -j REJECT --reject-with icmp-port-unreachable
+-A INPUT -p tcp -m tcp --dport 84 -j REJECT --reject-with icmp-port-unreachable
+-A INPUT -p tcp -m tcp --dport 85 -j REJECT --reject-with icmp-port-unreachable
+COMMIT

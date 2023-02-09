@@ -1,0 +1,9 @@
+- name: reboot_bind
+  ansible.builtin.systemd:
+    state: restarted
+    daemon_reload: true
+    name: bind9
+
+- name: netfilter_save
+  command: "/usr/sbin/netfilter-persistent save"
+

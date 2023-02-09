@@ -1,0 +1,34 @@
+- name: Create additional limits config file
+  community.general.pam_limits:
+    dest: /etc/security/limits.d/10.hardcore.conf
+    domain: "*"
+    limit_type: hard
+    limit_item: core
+    value: "0"
+
+- name: Set permissions
+  ansible.builtin.file:
+    path: /etc/security/limits.d/10.hardcore.conf
+    owner: root
+    group: root
+    mode: "0440"
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+
+- name: Create coredump.conf.d-directory if it does not exist
+  ansible.builtin.file:
+    path: /etc/systemd/coredump.conf.d
+    owner: root
+    group: root
+    mode: 0755
+    state: directory
+  when: ansible_service_mgr == "systemd"
+
+- name: Create custom.conf for disabling coredumps
+  ansible.builtin.copy:
+    src: coredumps.conf
+    dest: /etc/systemd/coredump.conf.d/custom.conf
+    owner: root
+    group: root
+    mode: 0644

@@ -1,0 +1,41 @@
+# we have to apply for existing users also
+# chage --mindays 1 --maxdays 45 --warndays 7 ubuntu
+
+- name: Configure passwdqc
+  ansible.builtin.copy:
+    src: pam_passwdqc
+    dest: /usr/share/pam-configs/passwdqc
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Configure login.defs
+  ansible.builtin.copy:
+    src: login.defs
+    dest: /etc/login.defs
+    owner: root
+    group: root
+    mode: "0444"
+
+- name: Configure tally2
+  ansible.builtin.copy:
+    src: pam_tally2
+    dest: /usr/share/pam-configs/tally2
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Configure common-password
+  ansible.builtin.copy:
+    src: common-password
+    dest: /etc/pam.d/common-password
+    backup: true
+    mode: 0644
+    owner: root
+    group: root
+
+- name: Update pam
+  command: pam-auth-update --package
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: false
